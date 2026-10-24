@@ -1,0 +1,11 @@
+[
+  { "fichier": "defaut.png", "nom": "Défaut" },
+  { "fichier": "voyageur.png", "nom": "Voyageur" },
+  { "fichier": "forestier.png", "nom": "Forestier" },
+  { "fichier": "givre.png", "nom": "Givre" },
+  { "fichier": "braise.png", "nom": "Braise" },
+  { "fichier": "noble.png", "nom": "Noble" },
+  { "fichier": "ombre.png", "nom": "Ombre" },
+  { "fichier": "or_noir.png", "nom": "Or noir", "exclusif": true },
+  { "fichier": "renard.png", "nom": "Renard", "exclusif": true }
+]

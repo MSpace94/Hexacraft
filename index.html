@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <script>
+    // (publication 1.1.5-alpha-mvm2b95g : une plus récente ? on recharge la page sur elle)
+    (function () {
+      var V = '1.1.5-alpha-mvm2b95g';
+      fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+        if (j && j.v && j.v !== V && location.search.indexOf('v=' + j.v) < 0) location.replace(location.pathname + '?v=' + encodeURIComponent(j.v));
+      }).catch(function () {});
+    })();
+  </script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="HexaCraft">
+  <link rel="apple-touch-icon" href="app/icon.png">
+  <title>HexaCraft</title>
+  <link rel="stylesheet" href="style.css?v=1.1.5-alpha-mvm2b95g">
+  <script type="importmap">
+    { "imports": { "three": "./node_modules/three/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <!-- Démarrage : les marques (MSpaceDev, Space Entertainment) pendant que le jeu se charge
+       derrière ; clic, Échap, Espace ou Entrée : passer -->
+  <div id="boot">
+    <div class="boot-card" id="boot-mspace">
+      <div class="boot-hex"><i></i><i></i><i></i></div>
+      <div class="boot-name"><b>MSpace</b><span>Dev</span></div>
+      <div class="boot-sub">présente</div>
+    </div>
+    <div class="boot-card" id="boot-space">
+      <img src="texture/interface/space_entertainment.png" alt="" draggable="false">
+      <div class="boot-name boot-space"><b>Space</b> <span>Entertainment</span></div>
+    </div>
+    <div class="boot-card" id="boot-load">
+      <div class="boot-title">Hexa<span>Craft</span></div>
+      <div class="boot-spin"></div>
+      <div class="boot-sub">Chargement…</div>
+    </div>
+  </div>
+  <script>
+    // (script classique, lancé tout de suite : le jeu, lui, attend ses textures et ses modules)
+    (function () {
+      var boot = document.getElementById('boot');
+      if (/[?&](film|nosplash)/.test(location.search)) { boot.remove(); return; }
+      var cards = ['boot-mspace', 'boot-space'], i = -1, timer = 0, done = false;
+      var ready = function () { return !!window.__hexaReady; };
+      function show(id) {
+        var all = boot.querySelectorAll('.boot-card');
+        for (var k = 0; k < all.length; k++) all[k].classList.toggle('on', all[k].id === id);
+      }
+      function finish() {
+        if (done) return;
+        done = true;
+        boot.classList.add('out');
+        setTimeout(function () { boot.remove(); }, 700);
+      }
+      function next() {
+        clearTimeout(timer);
+        i++;
+        if (i < cards.length) { show(cards[i]); timer = setTimeout(next, i === 0 ? 2600 : 3000); return; }
+        // les marques sont passées : le jeu est prêt ? sinon, l'écran de chargement jusqu'à ce qu'il le soit
+        if (ready()) finish();
+        else { show('boot-load'); window.addEventListener('hexa-ready', finish, { once: true }); }
+      }
+      function skip(e) {
+        if (done || (e.type === 'keydown' && ['Escape', 'Space', 'Enter', 'NumpadEnter'].indexOf(e.code) < 0)) return;
+        if (e.type === 'keydown') e.preventDefault();
+        if (i < cards.length) next();
+      }
+      boot.addEventListener('mousedown', skip);
+      window.addEventListener('keydown', skip, true);
+      setTimeout(next, 250);
+    })();
+  </script>
+  <div id="game"></div>
+  <div id="underwater"></div>
+  <canvas id="fire" class="fx"></canvas>
+  <canvas id="frost" class="fx"></canvas>
+
+  <!-- Interface en jeu -->
+  <div id="hud">
+    <div id="crosshair"></div>
+    <div id="breakbar"><i></i></div>
+    <div id="blockname"></div>
+    <div id="hearts"></div>
+    <div id="hunger"></div>
+    <div id="hotbar"></div>
+    <div id="hurt"></div>
+    <pre id="debug" hidden></pre>
+    <div id="chat"></div>
+    <form id="chat-form" autocomplete="off"><input id="chat-input" maxlength="200" spellcheck="false"></form>
+    <div id="playerlist" hidden></div>
+    <div id="voice-hud" hidden></div>
+    <div id="autocollect" hidden>Collecte auto</div>
+  </div>
+  <div id="toast"></div>
+
+  <!-- Écran titre -->
+  <section class="screen" id="scr-title">
+    <div class="logo">
+      <div class="logo-text">Hexa<span>Craft</span></div>
+      <div class="splash" id="splash"></div>
+    </div>
+    <div class="menu-col">
+      <button data-go="worlds">Solo</button>
+      <button id="btn-tuto">Tutoriel</button>
+      <button data-go="multi">Multijoueur</button>
+      <button id="btn-map-title">Carte du monde (explorer une graine)</button>
+      <div class="row">
+        <button data-go="options">Options…</button>
+        <button data-go="wiki">Wiki</button>
+        <button data-go="credits">Crédits</button>
+      </div>
+      <button id="btn-quit">Quitter le jeu</button>
+    </div>
+    <!-- Profil : pseudo, aperçu de la skin (on la change avec les flèches), compte -->
+    <div class="profile">
+      <div class="profile-name" id="profile-name"></div>
+      <canvas id="skin-view" title="Glisse pour faire tourner"></canvas>
+      <div class="skin-pick">
+        <button id="skin-prev" aria-label="Skin précédente">◀</button>
+        <span id="skin-name"></span>
+        <button id="skin-next" aria-label="Skin suivante">▶</button>
+      </div>
+      <button data-go="account" id="btn-account">Compte</button>
+    </div>
+    <div class="corner left">HexaCraft alpha 1.1.5</div>
+    <div class="corner right">Un monde fait d'hexagones</div>
+  </section>
+
+  <!-- Liste des mondes -->
+  <section class="screen dirt" id="scr-worlds">
+    <h2>Choisir un monde</h2>
+    <div class="world-list" id="world-list"></div>
+    <div class="btn-grid">
+      <button id="btn-play-world" disabled>Jouer au monde sélectionné</button>
+      <button data-go="create">Créer un nouveau monde</button>
+      <button id="btn-export" disabled>Exporter</button>
+      <button id="btn-import">Importer</button>
+      <button id="btn-delete" disabled>Supprimer</button>
+      <button id="btn-backups" disabled>Copies de secours…</button>
+      <button data-go="title">Retour</button>
+    </div>
+    <input type="file" id="file-import" accept=".json,application/json" hidden>
+  </section>
+
+  <!-- Copies de secours d'un monde (voir save.js) -->
+  <section class="screen dirt" id="scr-backups">
+    <h2 id="backup-title">Copies de secours</h2>
+    <p class="hint">Le jeu garde les 8 dernières versions de chaque monde (une au plus toutes les 10 minutes). Restaurer remet le monde comme il était à ce moment-là.</p>
+    <div class="world-list" id="backup-list"></div>
+    <div class="row bottom"><button data-go="worlds">Retour</button></div>
+  </section>
+
+  <!-- Création de monde -->
+  <section class="screen dirt" id="scr-create">
+    <h2>Créer un nouveau monde</h2>
+    <div class="form">
+      <label>Nom du monde<input id="in-name" maxlength="32" spellcheck="false"></label>
+      <button id="btn-type">Type de monde : Normal</button>
+      <p class="hint" id="type-hint"></p>
+      <button id="btn-mode">Mode de jeu : Créatif</button>
+      <p class="hint" id="mode-hint"></p>
+      <label>Graine du générateur<input id="in-seed" maxlength="40" spellcheck="false" placeholder="Laisser vide pour une graine aléatoire"></label>
+      <button id="btn-map-create">Voir la carte de cette graine</button>
+    </div>
+    <div class="row bottom">
+      <button id="btn-create">Créer le monde</button>
+      <button data-go="worlds">Annuler</button>
+    </div>
+  </section>
+
+  <!-- Multijoueur : rejoindre -->
+  <section class="screen dirt" id="scr-multi">
+    <h2>Multijoueur</h2>
+    <div class="form">
+      <label>Pseudo<input id="mp-name" maxlength="16" spellcheck="false"></label>
+      <label>Code de l'hôte ou adresse du serveur<input id="mp-addr" maxlength="80" spellcheck="false" placeholder="ex. HX-4K7P2Q (par internet) ou 192.168.1.20"></label>
+      <label>Mot de passe (si le serveur en a un)<input id="mp-pass" type="password" maxlength="40"></label>
+      <div class="recent" id="mp-recent"></div>
+      <p class="hint" id="mp-status"></p>
+      <button id="btn-join">Rejoindre le serveur</button>
+      <div class="social-list" id="mp-friends"></div>
+      <button id="mp-friends-btn">Amis</button>
+      <h4 class="sep">Si le code HX-… ne marche pas : codes d'invitation (ancienne méthode)</h4>
+      <label>Code d'invitation reçu de l'hôte<textarea id="mp-code" rows="3" spellcheck="false" placeholder="HXI1-…"></textarea></label>
+      <button id="btn-code-answer">Créer mon code réponse</button>
+      <div id="mp-answer-box" hidden>
+        <label>Ton code réponse : envoie-le à l'hôte<textarea id="mp-answer" rows="3" readonly></textarea></label>
+        <button id="btn-copy-answer">Copier le code réponse</button>
+      </div>
+      <p class="hint" id="mp-code-status"></p>
+    </div>
+    <div class="row bottom">
+      <button data-go="title">Retour</button>
+    </div>
+  </section>
+
+  <!-- Multijoueur : héberger (depuis le menu du jeu) -->
+  <section class="screen dirt" id="scr-host">
+    <h2>Ouvrir le monde en multijoueur</h2>
+    <div class="form" id="host-setup">
+      <label>Ton pseudo<input id="host-name" maxlength="16" spellcheck="false"></label>
+      <label>Port<input id="host-port" type="number" min="1024" max="65535"></label>
+      <label>Mot de passe (facultatif)<input id="host-pass" type="password" maxlength="40" placeholder="Laisser vide : pas de mot de passe"></label>
+      <button id="host-upnp">Ouvrir le port automatiquement (UPnP) : Oui</button>
+      <p class="hint" id="host-status"></p>
+    </div>
+    <div class="form host-info" id="host-info" hidden></div>
+    <div class="form host-info" id="host-invite" hidden>
+      <h4>Par internet sans rien régler : code d'invitation</h4>
+      <p>1. Crée un code et envoie-le à ton ami. 2. Il le colle dans Multijoueur et te renvoie son code réponse. 3. Colle sa réponse ici. Un code par ami.</p>
+      <button id="btn-invite">Créer un code d'invitation</button>
+      <div id="invite-box" hidden>
+        <label>Code d'invitation à envoyer<textarea id="invite-code" rows="3" readonly></textarea></label>
+        <button id="btn-copy-invite">Copier le code d'invitation</button>
+        <label>Code réponse de ton ami<textarea id="invite-answer" rows="3" spellcheck="false" placeholder="HXR1-…"></textarea></label>
+        <button id="btn-invite-accept">Connecter mon ami</button>
+      </div>
+      <p class="hint" id="invite-status"></p>
+    </div>
+    <div class="row bottom">
+      <button id="btn-host-start">Démarrer le serveur</button>
+      <button id="btn-host-stop" hidden>Fermer le serveur</button>
+      <button id="btn-host-back">Retour</button>
+    </div>
+  </section>
+
+  <!-- Succès du compte (voir account.js : ACHIEVEMENTS) -->
+  <section class="screen dirt" id="scr-achievements">
+    <h2>Succès</h2>
+    <div class="ach-head" id="ach-head"></div>
+    <div class="ach-list" id="ach-list"></div>
+    <div class="row bottom"><button data-go="account">Retour</button></div>
+  </section>
+
+  <!-- Amis (voir social.js) -->
+  <section class="screen dirt" id="scr-friends">
+    <h2>Amis</h2>
+    <p class="hint">Tes amis rejoignent ton monde sans code dès que tu l'ouvres en multijoueur, et toi le leur. ★ : favori (en haut de la liste).</p>
+    <div class="form">
+      <div class="row acc-code"><input id="fr-add" maxlength="16" placeholder="Pseudo d'un joueur" spellcheck="false"><button id="fr-add-ok">Ajouter en ami</button></div>
+      <p class="hint" id="fr-status"></p>
+    </div>
+    <div class="social-list" id="fr-requests"></div>
+    <div class="social-list" id="fr-list"></div>
+    <div class="row bottom"><button id="fr-back">Retour</button></div>
+  </section>
+
+  <!-- Clan (voir social.js) -->
+  <section class="screen dirt" id="scr-clan">
+    <h2>Clan</h2>
+    <p class="hint" id="cl-status"></p>
+    <div id="cl-mine" hidden>
+      <div class="clan-head"><canvas id="cl-banner-big" width="120" height="150"></canvas><div><h3 id="cl-title"></h3><p class="hint" id="cl-role"></p></div></div>
+      <div class="social-list" id="cl-members"></div>
+      <div class="row acc-code" id="cl-invite-row"><input id="cl-invite" maxlength="16" placeholder="Pseudo à inviter" spellcheck="false"><button id="cl-invite-ok">Inviter</button></div>
+    </div>
+    <div id="cl-none" hidden>
+      <div class="social-list" id="cl-invites"></div>
+      <h4 class="acc-title">Créer un clan</h4>
+      <div class="form">
+        <label>Nom du clan<input id="cl-name" maxlength="24" spellcheck="false"></label>
+        <label>Tag (2 à 4 lettres ou chiffres : il s'affiche devant ton pseudo en multijoueur)<input id="cl-tag" maxlength="4" spellcheck="false"></label>
+      </div>
+    </div>
+    <div class="clan-editor" id="cl-editor" hidden>
+      <canvas id="cl-preview" width="120" height="150"></canvas>
+      <div class="clan-fields">
+        <p>Couleur du clan <b id="cl-tag-preview">[TAG]</b></p><div class="chips" id="cl-color"></div>
+        <p>Fond de la bannière</p><div class="chips" id="cl-bg"></div>
+        <p>Motif <select id="cl-pat"></select></p><div class="chips" id="cl-pc"></div>
+        <p>Symbole <select id="cl-sym"></select></p><div class="chips" id="cl-sc"></div>
+      </div>
+    </div>
+    <div class="row bottom"><button id="cl-create">Créer le clan</button><button id="cl-save" hidden>Enregistrer</button><button id="cl-leave" hidden>Quitter le clan</button><button id="cl-back">Retour</button></div>
+  </section>
+
+  <!-- Classement mondial des succès (voir account.leaderboard) -->
+  <section class="screen dirt" id="scr-ranking">
+    <h2>Classement mondial</h2>
+    <div class="rank-tabs" id="rank-tabs"></div>
+    <p class="hint" id="rank-me"></p>
+    <div class="rank-list" id="rank-list"></div>
+    <div class="row bottom"><button id="rank-back">Retour</button></div>
+  </section>
+
+  <!-- Compte en ligne (voir account.js) -->
+  <section class="screen dirt" id="scr-account">
+    <h2>Compte</h2>
+    <div class="form"><button id="acc-skinstyle">Style des personnages : Hexagones</button><button id="acc-ranking">Classement mondial</button></div>
+    <div class="form two"><button id="acc-friends">Amis</button><button id="acc-clan">Clan</button></div>
+    <div class="form" id="acc-off" hidden>
+      <p class="hint">Les comptes en ligne ne sont pas encore configurés dans cette version du jeu.</p>
+    </div>
+    <div class="form" id="acc-login" hidden>
+      <p class="hint">Un compte garde ton niveau, tes succès et tes récompenses : codes cadeaux, couleurs de pseudo.</p>
+      <label id="acc-pseudo-row" hidden>Pseudo (3 à 16 lettres, chiffres, _ ou -)<input id="acc-pseudo" maxlength="16" spellcheck="false"></label>
+      <label><span id="acc-email-label">Pseudo ou adresse e-mail</span><input id="acc-email" type="text" maxlength="120" spellcheck="false" autocomplete="username"></label>
+      <label>Mot de passe<input id="acc-pass" type="password" maxlength="72" autocomplete="current-password"></label>
+      <button id="acc-submit">Se connecter</button>
+      <div class="row">
+        <button id="acc-switch">Créer un compte</button>
+        <button id="acc-forgot">Mot de passe oublié</button>
+      </div>
+      <div class="form" id="acc-reset" hidden>
+        <label>Code reçu par e-mail (ou le lien de l'e-mail, copié-collé)<input id="acc-code" maxlength="2000" spellcheck="false" autocomplete="one-time-code"></label>
+        <label>Nouveau mot de passe<input id="acc-newpass" type="password" maxlength="72" autocomplete="new-password"></label>
+        <button id="acc-reset-ok">Changer le mot de passe</button>
+      </div>
+      <!-- compte sans e-mail : la demande part chez un administrateur -->
+      <div class="form" id="acc-adminreq" hidden>
+        <p class="hint">Ce compte n'a pas d'adresse e-mail : un administrateur va te donner un mot de passe provisoire.
+          Écris-lui de quoi te reconnaître ou te joindre (Discord, ton dernier niveau, tes succès...).</p>
+        <label>Message pour l'administrateur<input id="acc-reqnote" maxlength="200" spellcheck="false"></label>
+        <button id="acc-reqsend">Envoyer la demande</button>
+      </div>
+      <button id="acc-reqcheck" hidden>Où en est ma demande de mot de passe ?</button>
+      <p class="hint" id="acc-status"></p>
+    </div>
+    <div class="acc-panel" id="acc-in" hidden>
+      <div class="acc-head">
+        <span class="acc-name" id="acc-name"></span>
+        <span class="acc-level" id="acc-level"></span>
+      </div>
+      <div class="acc-bar"><div id="acc-xp"></div></div>
+      <p class="acc-sub" id="acc-xptext"></p>
+
+      <h4 class="acc-title">Boîte à récompenses</h4>
+      <div class="acc-items" id="acc-rewards"></div>
+      <button id="acc-collect">Récupérer dans l'inventaire</button>
+      <p class="hint" id="acc-collect-status"></p>
+
+      <h4 class="acc-title">Code cadeau</h4>
+      <div class="row acc-code">
+        <input id="acc-gift" maxlength="32" spellcheck="false" placeholder="ex. SORTIE086">
+        <button id="acc-redeem">Valider</button>
+      </div>
+      <p class="hint" id="acc-code-status"></p>
+
+      <h4 class="acc-title">Couleur du pseudo <span class="acc-sub">(au-dessus de ta tête en multijoueur)</span></h4>
+      <div class="acc-colors" id="acc-colors"></div>
+
+      <button data-go="achievements" id="acc-ach-open">Succès <span class="acc-sub" id="acc-achcount"></span></button>
+      <p class="acc-sub" id="acc-rank"></p>
+
+      <h4 class="acc-title">Changer de mot de passe</h4>
+      <div class="row acc-code">
+        <input id="acc-chpass" type="password" maxlength="72" placeholder="Nouveau mot de passe" autocomplete="new-password">
+        <button id="acc-chpass-ok">Changer</button>
+      </div>
+      <p class="hint" id="acc-chpass-status"></p>
+
+      <!-- administrateur : les demandes de mot de passe des comptes sans e-mail -->
+      <div id="acc-admin" hidden>
+        <h4 class="acc-title">Administration : demandes de mot de passe <button id="acc-admin-refresh" class="acc-small">Actualiser</button></h4>
+        <div class="acc-admin-list" id="acc-admin-list"></div>
+      </div>
+
+      <button id="acc-logout">Se déconnecter</button>
+    </div>
+    <div class="row bottom"><button class="back">Retour</button></div>
+  </section>
+
+  <!-- Déconnecté -->
+  <section class="screen dirt" id="scr-disconnected">
+    <h2>Déconnecté</h2>
+    <p class="disc-reason" id="disc-reason"></p>
+    <div class="row bottom"><button id="btn-disc-ok">Retour au menu</button></div>
+  </section>
+
+  <!-- Options -->
+  <section class="screen dirt" id="scr-options">
+    <h2>Options</h2>
+    <div class="form two">
+      <div class="slider"><input type="range" id="opt-fov" min="50" max="110" step="1"><span></span></div>
+      <div class="slider"><input type="range" id="opt-sens" min="20" max="200" step="5"><span></span></div>
+      <div class="slider"><input type="range" id="opt-dist" min="96" max="7500" step="32"><span></span></div>
+      <div class="slider"><input type="range" id="opt-sim" min="0" max="256" step="16"><span></span></div>
+      <div class="slider"><input type="range" id="opt-res" min="50" max="150" step="10"><span></span></div>
+      <button id="opt-quality">Qualité graphique : Haut</button>
+      <button id="opt-autores">Résolution automatique : Oui</button>
+      <button id="opt-shadows">Ombres : Normales</button>
+      <button id="opt-fps">Images par seconde : Limitées</button>
+      <button id="opt-fpscap">Limite d'images : Aucune</button>
+      <button id="opt-intro">Cinématique en rejoignant un monde : Oui</button>
+      <button id="opt-lang" data-no-i18n>Langue / Language : Français</button>
+      <button data-go="keys">Touches et souris…</button>
+      <button data-go="sound">Sons…</button>
+    </div>
+    <div class="row bottom"><button class="back">Terminé</button></div>
+  </section>
+
+  <!-- Touches et souris (voir controls.js) -->
+  <section class="screen dirt" id="scr-keys">
+    <h2>Touches et souris</h2>
+    <div class="form two">
+      <button id="opt-layout">Clavier : automatique</button>
+      <button id="opt-lefthand">Souris : droitier</button>
+      <button id="opt-touch">Commandes tactiles : automatiques</button>
+    </div>
+    <p class="hint keys-hint">Les touches suivent leur place sur le clavier : la même configuration marche en AZERTY (Z Q S D) et en QWERTY (W A S D). Clique sur une touche pour la changer, puis appuie sur la nouvelle (Échap : annuler).</p>
+    <div class="keys-list" id="keys-list"></div>
+    <div class="row bottom"><button id="keys-reset">Touches par défaut</button><button data-go="options">Terminé</button></div>
+  </section>
+
+  <!-- Sons : volume général et par type de son -->
+  <section class="screen dirt" id="scr-sound">
+    <h2>Sons</h2>
+    <div class="form">
+      <div class="slider"><input type="range" id="opt-volMaster" min="0" max="100" step="5"><span></span></div>
+      <div class="slider"><input type="range" id="opt-volEffects" min="0" max="100" step="5"><span></span></div>
+      <div class="slider"><input type="range" id="opt-volWeather" min="0" max="100" step="5"><span></span></div>
+      <div class="slider"><input type="range" id="opt-volAmbiance" min="0" max="100" step="5"><span></span></div>
+      <div class="slider"><input type="range" id="opt-volMusic" min="0" max="100" step="5"><span></span></div>
+      <p class="hint">Effets : blocs, coups, animaux, explosions. Météo : pluie, tonnerre, tornades. Ambiance : oiseaux, grillons, feu des torches. Musique : le thème du menu, celle des cinématiques et, en jeu, un morceau de temps en temps.</p>
+      <h4 class="sep">Chat vocal (multijoueur)</h4>
+      <button id="opt-voice">Chat vocal : Appuyer pour parler (B)</button>
+      <div class="slider"><input type="range" id="opt-volVoice" min="0" max="200" step="10"><span></span></div>
+      <p class="hint">On entend les joueurs à moins de 40 blocs, plus fort quand ils sont près, du côté où ils se trouvent. « Toujours actif » : le micro transmet dès que tu parles.</p>
+    </div>
+    <div class="row bottom"><button data-go="options">Terminé</button></div>
+  </section>
+
+  <!-- Wiki : tout ce qu'il faut savoir (voir wiki.js) -->
+  <section class="screen dirt" id="scr-wiki">
+    <h2>Wiki</h2>
+    <div class="wiki">
+      <div class="wiki-side">
+        <input id="wiki-search" placeholder="Rechercher…" spellcheck="false" autocomplete="off">
+        <nav id="wiki-nav"></nav>
+      </div>
+      <div class="wiki-page" id="wiki-page"></div>
+    </div>
+    <div class="row bottom"><button class="back">Retour</button></div>
+  </section>
+
+  <!-- Commandes -->
+  <section class="screen dirt" id="scr-controls">
+    <h2>Commandes</h2>
+    <dl class="controls">
+      <dt data-k="move">Z Q S D</dt><dd>Se déplacer (W A S D en QWERTY)</dd>
+      <dt data-k="jump">Espace</dt><dd>Sauter — double appui : voler</dd>
+      <dt data-k="down">Maj</dt><dd>Descendre (en vol ou sous l'eau)</dd>
+      <dt data-k="sprint">Ctrl / Z Z</dt><dd>Courir</dd>
+      <dt>Clic gauche</dt><dd>Casser un hexa</dd>
+      <dt>Clic droit</dt><dd>Poser un hexa</dd>
+      <dt>Molette / 1 à 9, 0</dt><dd>Choisir la case de la barre</dd>
+      <dt data-k="inventory">E</dt><dd>Inventaire créatif</dd>
+      <dt data-k="drop">A</dt><dd>Jeter l'objet tenu dans un carton (Ctrl : toute la pile)</dd>
+      <dt data-k="pickup">E (en visant un carton)</dt><dd>Ramasser le carton · E maintenu : collecte automatique (les cartons proches viennent à toi)</dd>
+      <dt>Clic droit</dt><dd>Poser un Hexacart sur un rail / monter dedans</dd>
+      <dt>Clic droit</dt><dd>Allumer / éteindre un rail de propulsion</dd>
+      <dt data-k="cartForward">Z (à bord)</dt><dd>Pousser l'Hexacart</dd>
+      <dt data-k="cartDown">Maj (à bord)</dt><dd>Descendre de l'Hexacart</dd>
+      <dt>Clic molette</dt><dd>Prendre le bloc visé</dd>
+      <dt>Clic droit (torche en main)</dt><dd>Allumer une TNT</dd>
+      <dt>Super colle : clic droit</dt><dd>Coller / décoller un bloc</dd>
+      <dt>Super colle : Maj + clic droit</dt><dd>Assembler les blocs collés en objet physique (ou reposer un objet dans le monde)</dd>
+      <dt>Main gravitationnelle : clic droit</dt><dd>Attraper / lâcher un objet collé (même très lourd)</dd>
+      <dt>Main gravitationnelle : clic gauche, molette</dt><dd>Lancer l'objet tenu, le rapprocher / l'éloigner</dd>
+      <dt data-k="grabAxis">Main gravitationnelle : R, puis clic gauche (Maj : sens inverse)</dt><dd>Choisir l'axe de rotation (verticale, avant, côté), puis tourner l'objet tenu</dd>
+      <dt data-k="grabStraight">Main gravitationnelle : X</dt><dd>Redresser l'objet tenu</dd>
+      <dt>Marcher dans un objet</dt><dd>Le pousser (on peut monter et construire dessus)</dd>
+      <dt data-k="chat">T / Entrée</dt><dd>Ouvrir le chat (/ : commande)</dd>
+      <dt data-k="players">Tab</dt><dd>Liste des joueurs (multijoueur)</dd>
+      <dt data-k="voice">B (maintenu)</dt><dd>Parler au chat vocal (multijoueur, voir Options &gt; Sons)</dd>
+      <dt data-k="view">F5 / V</dt><dd>Changer de vue</dd>
+      <dt data-k="debug">F3</dt><dd>Infos de débogage</dd>
+      <dt>F1</dt><dd>Masquer toute l'interface</dd>
+      <dt>F11</dt><dd>Plein écran</dd>
+      <dt>Échap</dt><dd>Menu du jeu</dd>
+    </dl>
+    <h3 class="pad-title">Manette</h3>
+    <dl class="controls">
+      <dt>Stick gauche (clic : courir)</dt><dd>Se déplacer</dd>
+      <dt>Stick droit (clic : prendre le bloc visé)</dt><dd>Regarder</dd>
+      <dt>RT / LT</dt><dd>Casser (maintenu) / poser, utiliser</dd>
+      <dt>A / B</dt><dd>Sauter (deux fois : voler) / s'accroupir, descendre</dd>
+      <dt>X / Y</dt><dd>Inventaire / changer de vue</dd>
+      <dt>LB RB, croix ◀ ▶</dt><dd>Choisir la case de la barre</dd>
+      <dt>Croix ▼ / ▲</dt><dd>Jeter l'objet tenu / liste des joueurs</dd>
+      <dt>Start / Select</dt><dd>Menu du jeu / chat</dd>
+      <dt>Dans les menus</dt><dd>Stick gauche : curseur · A : cliquer · X : clic droit · B : retour · stick droit : défiler</dd>
+    </dl>
+    <div class="row bottom"><button class="back">Terminé</button></div>
+  </section>
+
+  <!-- Inventaire créatif -->
+  <section class="screen overlay" id="scr-inventory">
+    <div class="inv">
+      <div class="inv-head">
+        <h3>Inventaire créatif</h3>
+        <input id="inv-search" placeholder="Rechercher…" spellcheck="false" autocomplete="off">
+        <!-- équipement (la tête) : en haut, à côté de la recherche (pas de place en plus en bas) -->
+        <div class="equip creative-equip"><span>Tête</span><div class="slot" id="inv-head"></div></div>
+      </div>
+      <div class="inv-tabs" id="inv-tabs"></div>
+      <div class="inv-grid" id="inv-grid"></div>
+      <div class="inv-sep"></div>
+      <div class="inv-hotbar" id="inv-hotbar"></div>
+      <p class="inv-hint">Clique un bloc puis une case de la barre — ou survole un bloc et appuie sur 1 à 9 ou 0.<br>
+        Clic droit sur une case : la vider · E ou Échap : fermer</p>
+    </div>
+    <div id="inv-held"></div>
+  </section>
+
+  <!-- Inventaire de survie / table de craft -->
+  <!-- Commerce avec un villageois (voir openTrade) -->
+  <section class="screen overlay" id="scr-trade">
+    <div class="inv trade">
+      <h3 id="trade-title">Villageois</h3>
+      <div id="trade-list"></div>
+      <p class="inv-hint" id="trade-hint">Clique « Échanger » : les objets de gauche quittent ton inventaire, ceux de droite y arrivent · E ou Échap : fermer</p>
+    </div>
+  </section>
+
+  <section class="screen overlay" id="scr-craft">
+    <div class="inv sinv">
+      <div class="craft-area">
+        <h3 id="craft-title">Artisanat</h3>
+        <div class="craft" id="craft-box">
+          <div class="craft-grid" id="craft-grid"></div>
+          <div class="craft-arrow"></div>
+          <div class="slot craft-out" id="craft-out"></div>
+          <!-- équipement : ce qu'on porte (la tête) -->
+          <div class="equip" id="sinv-equip"><div id="sinv-head-slot"></div><span>Tête</span></div>
+        </div>
+        <!-- coffre : 30 cases -->
+        <div class="inv-grid" id="box-chest" hidden></div>
+        <!-- four : entrée en haut, combustible en bas, flamme entre les deux, résultat à droite -->
+        <div class="craft furnace" id="box-furnace" hidden>
+          <div class="fur-col">
+            <div class="slot" id="fur-in"></div>
+            <div class="fur-flame"><i id="fur-flame"></i></div>
+            <div class="slot" id="fur-fuel"></div>
+          </div>
+          <div class="craft-arrow fur-arrow"><i id="fur-arrow"></i></div>
+          <div class="slot craft-out" id="fur-out"></div>
+        </div>
+      </div>
+      <div class="inv-grid" id="sinv-main"></div>
+      <div class="inv-sep"></div>
+      <div class="inv-hotbar" id="sinv-hot"></div>
+      <p class="inv-hint">Clic : prendre / poser · Clic droit : la moitié / un seul · Maj + clic : ranger d'un coup<br>
+        Survole une case et appuie sur 1 à 0 : l'échanger avec la barre · E ou Échap : fermer</p>
+    </div>
+    <div id="sinv-cursor"></div>
+  </section>
+
+  <!-- Clé à molette : réglage d'un bloc physique -->
+  <section class="screen overlay" id="scr-phys">
+    <div class="inv phys">
+      <h3>Bloc physique</h3>
+      <p class="inv-hint">Quand il reçoit du courant, il fait avancer l'objet collé à cette vitesse<br>
+        (en blocs par seconde, de -30 à 30, axes de F3). y = 0 : l'objet vole à hauteur constante.</p>
+      <div class="phys-row">
+        <label>X<input type="number" id="phys-x" step="0.5" min="-30" max="30"></label>
+        <label>Y<input type="number" id="phys-y" step="0.5" min="-30" max="30"></label>
+        <label>Z<input type="number" id="phys-z" step="0.5" min="-30" max="30"></label>
+      </div>
+      <div class="row"><button id="phys-ok">Valider</button><button id="phys-cancel">Annuler</button></div>
+    </div>
+  </section>
+
+  <section class="screen overlay" id="scr-grav">
+    <div class="inv phys">
+      <h3>Gravitron</h3>
+      <p class="inv-hint">Pilote les blocs physiques allumés de l'objet jusqu'à ces coordonnées (celles de F3).
+        Leurs vitesses s'additionnent (30 blocs/s au plus).</p>
+      <div class="grav-modes">
+        <label><input type="radio" name="grav-mode" value="0"><b>Missile</b><span>monte en cloche puis fonce sur la cible ; sa TNT explose à l'impact</span></label>
+        <label><input type="radio" name="grav-mode" value="1"><b>Avion</b><span>monte à son altitude de croisière, vole droit, puis se pose doucement</span></label>
+        <label><input type="radio" name="grav-mode" value="2"><b>Bateau</b><span>avance seulement sur l'eau et s'arrête avant la rive</span></label>
+      </div>
+      <label class="grav-target">Destination<select id="grav-target"></select></label>
+      <div class="phys-row">
+        <label>X<input type="number" id="grav-x" step="1"></label>
+        <label>Y<input type="number" id="grav-y" step="1"></label>
+        <label>Z<input type="number" id="grav-z" step="1"></label>
+      </div>
+      <div class="row"><button id="grav-here">Ma position</button><button id="grav-route-open">Parcours…</button></div>
+      <div class="row"><button id="grav-ok">Valider</button><button id="grav-cancel">Annuler</button></div>
+    </div>
+    <!-- Parcours : une suite de blocs cibles, et le temps d'arrêt à chacun -->
+    <div class="inv phys" id="grav-route" hidden>
+      <h3>Parcours du gravitron</h3>
+      <p class="inv-hint">L'objet va d'un bloc cible à l'autre, dans l'ordre. À chaque étape, il reste
+        le temps indiqué (en secondes) avant de repartir. Avion ou bateau (un missile ne va qu'à la
+        première). Sans étape : la destination simple de la page d'avant.</p>
+      <ol class="route-list" id="grav-route-list"></ol>
+      <label class="route-loop"><input type="checkbox" id="grav-route-loop"> Une fois au bout, recommencer au début (boucle)</label>
+      <div class="row"><button id="grav-route-add">Ajouter une étape</button><button id="grav-route-clear">Tout retirer</button><button id="grav-route-back">Retour</button></div>
+    </div>
+  </section>
+
+  <!-- Menu de la locomotive (clic molette dans la cabine) : composants, itinéraire -->
+  <section class="screen overlay" id="scr-loco">
+    <div class="inv phys loco-ui">
+      <h3>Locomotive</h3>
+      <div class="struct-tabs"><button id="loco-tab-comp" class="on">Composants</button><button id="loco-tab-route">Itinéraire</button></div>
+      <div id="loco-comp">
+        <div class="loco-main">
+          <div class="loco-slots">
+            <div class="loco-engine"><div id="loco-engine"></div><span>Moteur</span></div>
+            <div class="loco-parts" id="loco-parts"></div>
+          </div>
+          <div class="loco-stats" id="loco-stats"></div>
+        </div>
+        <div class="loco-pick" id="loco-pick" hidden></div>
+        <p class="inv-hint">Clic sur un emplacement : choisir un moteur ou un composant · Clic droit : l'enlever<br>
+          Moteurs : la vitesse et l'énergie (thermique : charbon, bois ; électrique : voltite) · Composants : réservoir, freins, turbo, wagons en plus...</p>
+      </div>
+      <div id="loco-route" hidden>
+        <p class="inv-hint">Les gares à desservir, dans l'ordre (en boucle). En pilote automatique, le train ne s'arrête qu'à celles-là et règle tout seul les aiguillages pour y aller.</p>
+        <ol class="route-list" id="loco-route-list"></ol>
+        <p class="loco-lost" id="loco-route-lost" hidden>Impossible d'atteindre la prochaine gare depuis ici (dans ce sens)</p>
+        <div class="row"><select id="loco-route-pick"></select><button id="loco-route-add">Ajouter</button><button id="loco-route-clear">Toutes les gares</button></div>
+      </div>
+      <div class="row"><button id="loco-close">Fermer</button></div>
+    </div>
+  </section>
+
+  <section class="screen overlay" id="scr-target">
+    <div class="inv phys">
+      <h3 id="target-title">Bloc cible</h3>
+      <p class="inv-hint" id="target-hint">Son nom, tel qu'il apparaît dans la liste des destinations du gravitron.</p>
+      <div class="phys-row">
+        <label>Nom<input type="text" id="target-name" maxlength="32" spellcheck="false"></label>
+      </div>
+      <div class="row"><button id="target-ok">Valider</button><button id="target-cancel">Annuler</button></div>
+    </div>
+  </section>
+
+  <section class="screen overlay" id="scr-structure">
+    <div class="inv phys struct-ui">
+      <h3>Bloc de structure</h3>
+      <div class="struct-tabs"><button id="st-tab-save" class="on">Sauvegarder</button><button id="st-tab-load">Charger</button></div>
+      <p class="inv-hint">Zone à partir du bloc de structure, en cases : X vers l'est, Y vers le haut, Z vers le sud
+        (le cadre bleu la montre dans le monde).</p>
+      <div class="phys-row">
+        <label>Départ X<input type="number" id="st-ox" step="1"></label>
+        <label>Y<input type="number" id="st-oy" step="1"></label>
+        <label>Z<input type="number" id="st-oz" step="1"></label>
+      </div>
+      <div id="st-save">
+        <div class="phys-row">
+          <label>Taille X<input type="number" id="st-sx" min="1" max="64" step="1"></label>
+          <label>Y<input type="number" id="st-sy" min="1" max="156" step="1"></label>
+          <label>Z<input type="number" id="st-sz" min="1" max="64" step="1"></label>
+        </div>
+        <label class="st-wide">Nom<input id="st-name" maxlength="40" spellcheck="false" placeholder="ex. maison"></label>
+        <div class="row"><button id="st-save-btn">Sauvegarder la zone</button></div>
+      </div>
+      <div id="st-load" hidden>
+        <label class="st-wide">Structure<select id="st-list" size="6"></select></label>
+        <label class="st-wide">Rotation<select id="st-rot">
+          <option value="0">0°</option><option value="1">60°</option><option value="2">120°</option>
+          <option value="3">180°</option><option value="4">240°</option><option value="5">300°</option>
+        </select></label>
+        <div class="row"><button id="st-place">Placer</button><button id="st-delete">Supprimer</button></div>
+      </div>
+      <p class="hint" id="st-status"></p>
+      <div class="row"><button id="st-folder">Dossier des structures</button><button id="st-close">Fermer</button></div>
+    </div>
+  </section>
+
+  <!-- Confirmation (remplace confirm() : dans Electron, après une fenêtre native, on ne
+       pouvait plus écrire dans les champs de texte) -->
+  <div id="ask" hidden>
+    <div class="inv ask">
+      <p id="ask-text"></p>
+      <div class="row"><button id="ask-yes">Oui</button><button id="ask-no">Annuler</button></div>
+    </div>
+  </div>
+
+  <!-- Mort (survie) -->
+  <div id="spectator-tag" hidden>SPECTATEUR</div>
+  <section class="screen" id="scr-dead">
+    <h2 class="dead-title" id="dead-title">Tu es mort !</h2>
+    <p class="dead-sub" id="dead-sub">Tes objets sont restés dans ton inventaire.</p>
+    <div class="menu-col">
+      <button id="btn-respawn">Réapparaître</button>
+      <button id="btn-spectate" hidden>Regarder le monde (spectateur)</button>
+      <button id="btn-dead-title" hidden>Menu principal</button>
+    </div>
+  </section>
+
+  <!-- Crédits -->
+  <section class="screen dirt" id="scr-credits">
+    <div class="credits">
+      <div class="logo-text small">Hexa<span>Craft</span></div>
+      <p class="version">Version alpha 1.1.5</p>
+      <h3>Créateur</h3>
+      <p class="name">MSpace94</p>
+      <h3>Technologies</h3>
+      <p>three.js — rendu 3D<br>Electron — application Windows</p>
+      <h3>Sons</h3>
+      <p>Pluie et orage, oiseaux : LaSonotheque.fr<br>Grillons : freesound_community (Pixabay)<br>Feu des torches : Dragon Studio (Pixabay)</p>
+      <p class="thanks">Merci de jouer à HexaCraft !</p>
+    </div>
+    <div class="row bottom"><button class="back">Terminé</button></div>
+  </section>
+
+  <!-- Pause -->
+  <section class="screen overlay" id="scr-pause">
+    <h2>Menu du jeu</h2>
+    <div class="menu-col">
+      <button id="btn-resume">Retour au jeu</button>
+      <div class="row">
+        <button data-go="options">Options…</button>
+        <button data-go="controls">Commandes</button>
+      </div>
+      <div class="row">
+        <button id="btn-open-host">Ouvrir en multijoueur…</button>
+        <button data-go="credits">Crédits</button>
+      </div>
+      <div class="row">
+        <button id="btn-map-pause">Carte du monde</button>
+        <button data-go="wiki">Wiki</button>
+      </div>
+      <button data-go="account" id="btn-account-pause">Compte</button>
+      <button id="btn-save-quit">Sauvegarder et quitter vers le titre</button>
+    </div>
+  </section>
+
+  <!-- Carte du monde -->
+  <section class="screen dirt" id="scr-map">
+    <h2>Carte du monde</h2>
+    <div class="map-bar">
+      <label>Graine<input id="map-seed" maxlength="40" spellcheck="false" autocomplete="off"></label>
+      <button id="map-go">Voir</button>
+      <button id="map-rand">Graine aléatoire</button>
+    </div>
+    <div class="map-wrap">
+      <canvas id="map-canvas"></canvas>
+      <div class="map-zoom"><button id="map-in" title="Zoomer">+</button><button id="map-out" title="Dézoomer">−</button></div>
+      <!-- repère : poser (clic droit sur la carte) ou retirer (clic sur un repère) -->
+      <div class="map-mark" id="map-mark" hidden>
+        <p id="map-mark-title"></p>
+        <input id="map-mark-name" maxlength="24" spellcheck="false" autocomplete="off" placeholder="Nom du repère">
+        <div class="row"><button id="map-mark-ok">Ajouter</button><button id="map-mark-del">Retirer</button><button id="map-mark-x">Fermer</button></div>
+      </div>
+      <div class="map-legend" id="map-legend"></div>
+      <div class="map-rain" id="map-rain-box" hidden>
+        <label><input type="checkbox" id="map-objects"> Objets physiques</label>
+        <label><input type="checkbox" id="map-rain"> Météo (pluie)</label>
+        <div class="map-rain-key"><span><i style="background:#3cc850"></i>Petite pluie</span><span><i style="background:#f0dc32"></i>Pluie</span><span><i style="background:#e63c28"></i>Forte pluie</span><span><i style="background:#d23cdc"></i>Orage</span><span><i style="background:#64dcff"></i>Neige</span><span><i style="background:#d8d4cc"></i>Tornade</span></div>
+      </div>
+    </div>
+    <div class="map-info" id="map-info"></div>
+    <div class="row bottom">
+      <button id="map-me">Ma position</button>
+      <button id="map-spawn">Point d'apparition</button>
+      <button id="map-back">Retour</button>
+    </div>
+  </section>
+
+  <!-- Chargement -->
+  <section class="screen dirt" id="scr-loading">
+    <h2 id="loading-text">Génération du terrain…</h2>
+  </section>
+
+  <script>
+    if (location.protocol === 'file:') {
+      document.body.insertAdjacentHTML('beforeend',
+        '<p style="position:fixed;inset:auto 0 40% 0;text-align:center;color:#fff;font:20px sans-serif">' +
+        '⚠ Lance le jeu avec <b>HexaCraft.exe</b> ou <b>lancer.bat</b>.</p>');
+    }
+  </script>
+  <script type="module" src="src/main.js?v=1.1.5-alpha-mvm2b95g"></script>
+</body>
+</html>
