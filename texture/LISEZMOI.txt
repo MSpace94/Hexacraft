@@ -1,0 +1,58 @@
+Textures de HexaCraft
+=====================
+
+Toutes les textures sont dessinées en "pixels hexagonaux" (hexagones pointe en haut,
+environ 51 px de large, sur une toile de 887 x 765). Le jeu retrouve tout seul la grille
+d'hexagones : il coupe les bords en zigzag des blocs et fait les modèles 3D des objets.
+
+blocs/          blocs du monde (dessus, côtés, dessous)
+  tnt/          TNT : tnt_side, tnt_top, tnt_bottom
+  big_tnt/      Big TNT (même chose, en or)
+  tnt_200/      TNT 200 : tnt_200_side, tnt_200_top, tnt_200_bottom
+  tnt_1000/     TNT 1000 : tnt_1000_side, tnt_1000_top, tnt_1000_bottom
+  levier/       lever.png (icône du levier ; en jeu : socle en pierre taillée, manche en bois)
+  four/         furnace_front (éteint), furnace_front_on (allumé), furnace_side, furnace_top
+  coffre/       chest.png : planche découpée comme le coffre de Minecraft (64 unités de large)
+  verre/        glass.png (le centre transparent reste transparent)
+  fer/          iron_ore, iron_block
+  voltite/      voltite_ore, voltite_block, fil : wire_on / wire_off (tronçon), wire_dot_on / wire_dot_off (point)
+                voltite impure : impure_voltite_ore, fil bleu impure_wire_on / _off, impure_wire_dot_on / _off
+  platine/      platinum_ore, platinum_block
+  tungstene/    tungsten_ore, tungsten_block
+  lampe/        lamp_off, lamp_on (lampe de voltite éteinte / allumée)
+  physique/     bloc physique : physics_top, physics_side (+ _on : allumé), petites textures 16 px
+  grass_side.png (facultatif) côté de l'herbe ; sinon composé avec dirt + grass_top
+  neige/        ice_water (facultatif : icône de l'eau glaciale), snow (neige), snow_side (facultatif : côté de l'herbe enneigée, sinon dirt + snow)
+  desert/       cactus_side, cactus_top
+  bouleau/      birch_log, birch_log_top, birch_leaves, birch_planks
+  diorite/      diorite, polished_diorite, diorite_bricks
+  fer_industriel/ industrial_iron, industrial_iron_copper, industrial_iron_rusty
+  piston/       piston_side_head (côté, tête rentrée), piston_side (côté, tête sortie), piston_rod (tige),
+                piston_face (la tête), piston_bottom (le dessous) ; piston vers le bas : côtés retournés
+  ordinateur/   computer_top, computer_bottom, et une face par côté : computer_screen, _ports, _vent, _bays, _circuits, _reactor
+  serveur/      server_top, server_bottom, server_side_1 à server_side_6 (une façade par côté)
+rails/          rails (fond transparent entre les traverses)
+plantes/        oak_sapling (pousse de chêne), big_oak_sapling (pousse de grand chêne), birch_sapling (bouleau), fond transparent
+torches/        torche, torche d'énergie allumée / éteinte (fond transparent)
+objets/         bâton, charbon, caillou, boule de neige, lingot de fer, voltite, voltite impure, lingots de platine et de tungstène, tige de platine, clé à molette, super colle, main gravitationnelle
+outils/bois/    pickaxe, axe, shovel, sword, hoe (manche en bas à gauche, tête en haut à droite)
+outils/caillou/ mêmes noms, outils rustiques
+outils/pierre/  mêmes noms, outils en pierre
+outils/fer/     mêmes noms, outils en fer
+outils/platine/ mêmes noms, outils en platine
+outils/tungstene/ mêmes noms, outils en tungstène
+outils/bouleau/ et outils/diorite/ : mêmes noms
+objets/circuits/ circuits intégrés ; objets/planchettes/ ; objets/forge/ : burin, lime, masse_forge, seau_trempe, charbon_forge, lingot_chaud
+objets/pc/      pièces d'ordinateur (liste et noms dans src/pcparts.js : ajouter les nouvelles à la fin)
+interface/coeurs/ full, half, empty
+interface/feu/   GIF animés quand on brûle : ignite (on prend feu, joué une fois), burning (en boucle), extinguish (le feu s'éteint)
+interface/givre/ GIF animés dans l'eau glaciale : freeze (on gèle, une fois), frozen (en boucle), melt (le dégel)
+ciel/           sun.png, et lune/ : les 8 phases (fond transparent)
+entites/        joueur/skin.png (skin au format Minecraft), hexacart/ (icône + texture du modèle)
+                zombie/zombie.png (skin des zombies, au format des joueurs de Minecraft, 64 x 64)
+objets/viande/  mouton_cru, mouton_cuit, renard_cru, renard_cuit ; objets/oeuf_zombie.png
+plantes/pomme_de_terre/ potato_0 à potato_7 (stades de pousse) ; objets/pomme_de_terre/ : potato, baked_potato
+entites/villageois/metiers/ : guard, forester, baker, butcher, carpenter, fieldbuilder, leafer, vehiclebuilder, taxi, police, gendarme, militaire1, militaire2, teacher, courier, doctor, roadworker (garde, forestier, boulanger, boucher, charpentier, bâtisseur de champs, feuilleteur, constructeur de véhicules, chauffeur de taxi, policier, gendarme, militaires : tenues 1 et 2, instituteur, livreur, médecin, cantonnier)
+
+Pour changer une texture : remplacer le fichier en gardant le même nom.
+La liste des fichiers utilisés est dans src/textures.js (blocs) et src/blocks.js (objets).
